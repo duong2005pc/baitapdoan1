@@ -1,0 +1,6 @@
+@TrafficLaw.API_HostAddress = http://localhost:5201
+
+GET {{TrafficLaw.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
