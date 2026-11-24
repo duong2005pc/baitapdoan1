@@ -1,5 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using TrafficLaw.API.Data;
+using TrafficLaw.API.Services;
+
+// Đọc cấu hình từ file .env trước khi tạo ứng dụng.
+LoadDotEnv();
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,6 +19,25 @@ builder.Services.AddCors(options =>
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
+});
+
+// Ollama chỉ được gọi qua địa chỉ loopback trên cùng máy chạy Backend.
+var ollamaBaseUrl = builder.Configuration["Ollama:BaseUrl"]
+    ?? Environment.GetEnvironmentVariable("OLLAMA_BASE_URL")
+    ?? "http://127.0.0.1:11434/";
+
+if (!Uri.TryCreate(ollamaBaseUrl, UriKind.Absolute, out var ollamaUri) ||
+    (ollamaUri.Host != "localhost" && !System.Net.IPAddress.TryParse(ollamaUri.Host, out var ip) ||
+     (System.Net.IPAddress.TryParse(ollamaUri.Host, out ip) && !System.Net.IPAddress.IsLoopback(ip))))
+{
+    throw new InvalidOperationException(
+        "OLLAMA_BASE_URL phải trỏ tới localhost hoặc địa chỉ loopback để không mở Ollama ra mạng bên ngoài.");
+}
+
+builder.Services.AddHttpClient<OllamaService>(client =>
+{
+    client.BaseAddress = new Uri(ollamaBaseUrl.EndsWith('/') ? ollamaBaseUrl : ollamaBaseUrl + "/");
+    client.Timeout = TimeSpan.FromSeconds(90);
 });
 
 var dbProvider = builder.Configuration["DatabaseProvider"] ?? "Sqlite";
@@ -68,3 +91,30 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+// Đọc file .env đơn giản; biến môi trường đã tồn tại sẽ được ưu tiên giữ nguyên.
+static void LoadDotEnv()
+{
+    var envPath = Path.Combine(Directory.GetCurrentDirectory(), ".env");
+    if (!File.Exists(envPath))
+        return;
+
+    foreach (var rawLine in File.ReadAllLines(envPath))
+    {
+        var line = rawLine.Trim();
+        if (string.IsNullOrWhiteSpace(line) || line.StartsWith('#'))
+            continue;
+
+        var separator = line.IndexOf('=');
+        if (separator <= 0)
+            continue;
+
+        var key = line[..separator].Trim();
+        var value = line[(separator + 1)..].Trim().Trim('"', '\'');
+        if (!string.IsNullOrWhiteSpace(key) &&
+            Environment.GetEnvironmentVariable(key) is null)
+        {
+            Environment.SetEnvironmentVariable(key, value);
+        }
+    }
+}
