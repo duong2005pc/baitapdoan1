@@ -16,7 +16,7 @@ namespace TrafficLaw.API.Services
 
         public async Task<string> AskAsync(string question, CancellationToken cancellationToken = default)
         {
-            var model = _configuration["Ollama:Model"] ?? "llama3.2";
+            var model = _configuration["Ollama:Model"]\n                ?? Environment.GetEnvironmentVariable("OLLAMA_MODEL")\n                ?? "llama3.2";
 
             var payload = new
             {
